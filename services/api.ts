@@ -166,7 +166,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, email, role }),
+        body: JSON.stringify({ name, email, role: role.toUpperCase() as UserRole }),
       });
       
       const result = await handleResponse(response);
@@ -192,7 +192,7 @@ export const api = {
         const response = await fetch(`${API_URL}/auth/google`, {
           method: 'POST',
           headers: getAuthHeaders(),
-          body: JSON.stringify({ role }),
+          body: JSON.stringify({ role: role.toUpperCase() as UserRole }),
         });
         const result = await handleResponse(response);
         
