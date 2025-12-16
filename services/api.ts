@@ -159,14 +159,14 @@ export const api = {
       }
   },
 
-  async register(name: string, email: string, role: UserRole): Promise<ApiResponse<User>> {
+  async register(name: string, email: string, password: string, role: UserRole): Promise<ApiResponse<User>> {
     try {
       const response = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, email, role: role.toUpperCase() as UserRole }),
+        body: JSON.stringify({ name, email, password, role: role.toUpperCase() as UserRole }),
       });
       
       const result = await handleResponse(response);

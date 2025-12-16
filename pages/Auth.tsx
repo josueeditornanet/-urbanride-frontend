@@ -31,7 +31,7 @@ export const AuthPage: React.FC = () => {
           setError(res.message || 'Falha no login');
         }
       } else {
-        const res = await api.register(name, email, role);
+        const res = await api.register(name, email, password, role);
         if (res.success && res.data) {
           setUser(res.data);
         } else {
