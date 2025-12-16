@@ -1,0 +1,5 @@
+{
+  "name": "Sistema UrbanRide",
+  "description": "Uma plataforma completa de simulação de transporte urbano incluindo Registro de Usuário, Solicitação de Corridas, Sistema de Crédito para Motoristas e Execução de Corridas baseada em fluxogramas Mermaid.",
+  "requestFramePermissions": []
+}
