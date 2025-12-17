@@ -1,4 +1,4 @@
-import { User, UserRole, Ride, RideStatus, Transaction, ApiResponse, VerificationStatus, GeoLocation, RouteDetails, PaymentMethod, ChatMessage } from '../types';
+import { User, UserRole, Ride, RideStatus, Transaction, ApiResponse, VerificationStatus, GeoLocation, RouteDetails, PaymentMethod, ChatMessage, AvailableRidesResponse } from '../types';
 
 // --- CONFIGURAÇÃO DE SEGURANÇA ---
 const ENABLE_FINANCIAL_BLOCK = true;
@@ -279,7 +279,7 @@ export const api = {
       }
   },
 
-  async getAvailableRides(driverId: string): Promise<ApiResponse<{rides: Ride[], debug?: any}>> {
+  async getAvailableRides(driverId: string): Promise<AvailableRidesResponse> {
       try {
         const response = await fetch(`${API_URL}/rides/available?driverId=${driverId}`, {
           headers: getAuthHeaders(),

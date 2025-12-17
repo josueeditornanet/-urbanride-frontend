@@ -208,8 +208,8 @@ export const DriverDashboard: React.FC = () => {
               // 2. Buscar novas corridas se online
               if (isOnline) {
                   const availRes = await api.getAvailableRides(user.id);
-                  if (availRes.success && availRes.data) {
-                      const rides = availRes.data.rides;
+                  if (availRes.success && availRes.rides) {
+                      const rides = availRes.rides;
                       
                       // AUDIO ALERT LOGIC
                       let hasNewRide = false;
@@ -225,6 +225,8 @@ export const DriverDashboard: React.FC = () => {
                       }
                       
                       setAvailableRides(rides);
+                  } else {
+                      setAvailableRides([]);
                   }
               }
           }

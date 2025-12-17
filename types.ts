@@ -153,4 +153,12 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   message?: string;
+  token?: string;
+}
+
+export interface AvailableRidesResponse {
+  success: boolean;
+  rides: Ride[];
+  debug?: any;
+  message?: string;
 }
