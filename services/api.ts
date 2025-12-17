@@ -35,18 +35,24 @@ export const api = {
         },
         body: JSON.stringify({ email }),
       });
-      
+
       const result = await handleResponse(response);
-      
-      if (result.success && result.data) {
+
+      // Ajuste para o formato correto de resposta da API
+      if (result.success && (result.user || result.data)) {
+        const userData = result.user || result.data;
+        const token = result.token;
+
         // Armazena token se fornecido pelo backend
-        if (result.token) {
-          localStorage.setItem('urbanride_token', result.token);
+        if (token) {
+          localStorage.setItem('urbanride_token', token);
         }
         // Armazena dados do usuário
-        localStorage.setItem('urbanride_session', JSON.stringify(result.data));
+        localStorage.setItem('urbanride_session', JSON.stringify(userData));
+
+        return { success: true, data: userData, token, message: result.message };
       }
-      
+
       return result;
     } catch (error) {
       console.error('Login error:', error);
@@ -168,18 +174,24 @@ export const api = {
         },
         body: JSON.stringify({ name, email, password, role: role.toUpperCase() as UserRole }),
       });
-      
+
       const result = await handleResponse(response);
-      
-      if (result.success && result.data) {
+
+      // Ajuste para o formato correto de resposta da API
+      if (result.success && (result.user || result.data)) {
+        const userData = result.user || result.data;
+        const token = result.token;
+
         // Armazena token se fornecido pelo backend
-        if (result.token) {
-          localStorage.setItem('urbanride_token', result.token);
+        if (token) {
+          localStorage.setItem('urbanride_token', token);
         }
         // Armazena dados do usuário
-        localStorage.setItem('urbanride_session', JSON.stringify(result.data));
+        localStorage.setItem('urbanride_session', JSON.stringify(userData));
+
+        return { success: true, data: userData, token, message: result.message };
       }
-      
+
       return result;
     } catch (error) {
       console.error('Register error:', error);
