@@ -67,7 +67,7 @@ export const api = {
 
   async getDriverData(id: string) {
       try {
-        const response = await fetch(`${API_URL}/users/${id}`, {
+        const response = await fetch(`${API_URL}/auth/me`, {
           headers: getAuthHeaders(),
         });
         const result = await handleResponse(response);
@@ -231,13 +231,13 @@ export const api = {
 
   async updateUserProfile(id: string, data: any) {
       try {
-        const response = await fetch(`${API_URL}/users/${id}`, {
-          method: 'PATCH',
+        const response = await fetch(`${API_URL}/auth/profile`, {
+          method: 'PUT',
           headers: getAuthHeaders(),
           body: JSON.stringify(data),
         });
         const result = await handleResponse(response);
-        
+
         if (result.success && result.data) {
           // Atualiza sessão local se for o mesmo usuário
           const currentSession = localStorage.getItem('urbanride_session');
@@ -248,7 +248,7 @@ export const api = {
             }
           }
         }
-        
+
         return result;
       } catch (error) {
         console.error('Update user profile error:', error);
