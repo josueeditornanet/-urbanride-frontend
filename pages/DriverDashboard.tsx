@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Ride, RideStatus } from '../types';
-import { Button, Card, Modal, StatusBadge } from '../components/UI';
+import { Button, Card, StatusBadge } from '../components/UI';
 import { useSoundSystem } from '../hooks/useSoundSystem';
 
 export const DriverDashboard: React.FC = () => {
@@ -59,6 +59,9 @@ export const DriverDashboard: React.FC = () => {
 
       {activeRide ? (
         <Card title="Corrida Ativa">
+          <div className="flex justify-between items-center mb-4">
+             <StatusBadge status={activeRide.status} />
+          </div>
           <p className="text-white mb-4">{activeRide.origin} -> {activeRide.destination}</p>
           <div className="space-y-3">
             {activeRide.status === RideStatus.ACCEPTED && <Button className="w-full" onClick={() => updateStatus(RideStatus.DRIVER_ARRIVED)}>Cheguei</Button>}
@@ -75,12 +78,13 @@ export const DriverDashboard: React.FC = () => {
                 <h3 className="text-2xl font-bold text-white">R$ {ride.price.toFixed(2)}</h3>
                 <span className="text-text-secondary">{ride.distanceKm} km</span>
               </div>
+              <p className="text-sm text-text-secondary mb-4">{ride.origin}</p>
               <Button className="w-full" onClick={() => handleAccept(ride.id)}>Aceitar Agora</Button>
             </Card>
           ))}
           {availableRides.length === 0 && (
               <div className="text-center py-10 opacity-30">
-                  <p className="text-sm">Nenhuma corrida disponível no momento</p>
+                  <p className="text-sm text-white">Nenhuma corrida disponível no momento</p>
               </div>
           )}
         </div>

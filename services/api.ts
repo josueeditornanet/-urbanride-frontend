@@ -1,4 +1,4 @@
-import { User, UserRole, Ride, RideStatus, Transaction, ApiResponse, VerificationStatus, RouteDetails, PaymentMethod, AvailableRidesResponse } from '../types';
+import { User, UserRole, Ride, RideStatus, ApiResponse, VerificationStatus, RouteDetails, PaymentMethod, AvailableRidesResponse } from '../types';
 
 const API_DOMAIN = 'app.melevabr.com.br:3333';
 const API_URL = `http://${API_DOMAIN}`;
@@ -94,33 +94,11 @@ export const api = {
         }
         return res;
     },
-    async loginLegacy(email: string, password?: string): Promise<ApiResponse<User>> {
-        const res = await request<any>('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-        if (res.success && res.data) {
-            const token = res.data.token;
-            const userData = fromApiUser(res.data.user);
-            localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-            return { success: true, data: userData, token };
-        }
-        return res;
-    },
     async loginWithGoogle(role: UserRole): Promise<ApiResponse<User>> {
         return { success: false, message: "Login com Google em desenvolvimento para a porta 3333." };
     },
     async register(name: string, email: string, role: UserRole, password?: string): Promise<ApiResponse<User>> {
         const res = await request<any>('/auth/register', { method: 'POST', body: JSON.stringify({ name, email, role, password }) });
-        if (res.success && res.data) {
-            const token = res.data.token;
-            const userData = fromApiUser(res.data.user);
-            localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-            return { success: true, data: userData, token };
-        }
-        return res;
-    },
-    async registerLegacy(name: string, email: string, role: UserRole, password?: string): Promise<ApiResponse<User>> {
-        const res = await request<any>('/register', { method: 'POST', body: JSON.stringify({ name, email, role, password }) });
         if (res.success && res.data) {
             const token = res.data.token;
             const userData = fromApiUser(res.data.user);
@@ -147,11 +125,10 @@ export const api = {
     },
     async getAvailableRides(driverId: number | string): Promise<ApiResponse<AvailableRidesResponse>> {
         const res = await request<any[]>(`/rides/available?driverId=${driverId}`);
-        return res.success ? { success: true, data: { rides: res.data!.map(fromApiRide) } } : { success: false, data: { rides: [] } };
-    },
-    async getDriverActiveRide(driverId: number | string): Promise<ApiResponse<Ride | null>> {
-        const res = await request<any>(`/rides/active`);
-        return res.success ? { success: true, data: res.data ? fromApiRide(res.data) : null } : res;
+        if (res.success && res.data) {
+            return { success: true, data: { rides: res.data.map(fromApiRide) } };
+        }
+        return { success: false, data: { rides: [] } };
     },
     async acceptRide(driverId: number | string, rideId: number | string): Promise<ApiResponse<Ride>> {
         return request<any>(`/rides/${rideId}/accept`, { method: 'POST' }).then(res => res.success ? { success: true, data: fromApiRide(res.data) } : res);
@@ -165,19 +142,6 @@ export const api = {
     },
     async calculateRoute(origin: any, destination: any): Promise<ApiResponse<RouteDetails>> {
         return request<RouteDetails>(`/geo/route`, { method: 'POST', body: JSON.stringify({ origin, destination }) });
-    },
-    async searchPlaces(q: string) { return request<any[]>(`/geo/search?q=${encodeURIComponent(q)}`); },
-    async reverseGeocode(lat?: number, lng?: number) { return request<string>(`/geo/address?lat=${lat}&lng=${lng}`); },
-    async getWalletHistory(userId: number | string) {
-        const res = await request<any[]>(`/users/${userId}/transactions`);
-        return res.success ? res.data!.map((t: any) => ({ ...t, amount: parseFloat(t.amount), date: new Date(t.created_at).getTime() })) : [];
-    },
-    async sendMessage(rideId: number | string, senderId: number | string, content: string) {
-        return request<any>(`/rides/${rideId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
-    },
-    async markMessagesAsRead(rideId: number | string, userId?: number | string) { await request(`/rides/${rideId}/messages/read`, { method: 'POST' }); },
-    async rateRide(rideId: number | string, targetUserId: number | string, rating: number, shouldBlock: boolean, reporterId: number | string) {
-        return request(`/rides/${rideId}/rate`, { method: 'POST', body: JSON.stringify({ targetUserId, rating, shouldBlock, reporterId }) });
     },
     async uploadDriverDocument(userId: number | string, file: File, type: string): Promise<ApiResponse<User>> {
         const formData = new FormData();

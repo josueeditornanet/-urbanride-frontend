@@ -39,15 +39,18 @@ export const AuthPage: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center p-4 bg-dracula-bg">
       <Card className="w-full max-w-md border-[#bd93f9]/20 shadow-neon-sm">
         <h1 className="text-4xl font-display font-bold text-center bg-clip-text text-transparent bg-gradient-to-r from-neon-green to-dracula-cyan mb-8">UrbanRide</h1>
+
         {error && (
-            <div className="bg-dracula-red/10 text-dracula-red p-3 rounded-xl text-sm mb-6 border border-dracula-red/20 animate-pulse">
+            <div className="bg-dracula-red/10 text-dracula-red p-3 rounded-xl text-sm mb-6 border border-dracula-red/20 animate-pulse text-center">
                 {error}
             </div>
         )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && <Input label="Nome Completo" value={name} onChange={e => setName(e.target.value)} required />}
           <Input label="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
           <Input label="Senha" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+
           {!isLogin && (
             <div className="grid grid-cols-2 gap-4">
               <button
@@ -66,12 +69,14 @@ export const AuthPage: React.FC = () => {
               </button>
             </div>
           )}
+
           <Button type="submit" className="w-full mt-4" isLoading={isLoading}>
               {isLogin ? 'Entrar' : 'Criar Conta'}
           </Button>
         </form>
-        <button onClick={() => setIsLogin(!isLogin)} className="w-full mt-6 text-sm text-dracula-purple hover:underline">
-            {isLogin ? "Criar nova conta" : "Já tenho conta"}
+
+        <button onClick={() => setIsLogin(!isLogin)} className="w-full mt-6 text-sm text-dracula-purple hover:underline text-center block">
+            {isLogin ? "Ainda não tem conta? Cadastre-se" : "Já tem uma conta? Entre agora"}
         </button>
       </Card>
     </div>
