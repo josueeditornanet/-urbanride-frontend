@@ -62,7 +62,7 @@ export const DriverDashboard: React.FC = () => {
           <div className="flex justify-between items-center mb-4">
              <StatusBadge status={activeRide.status} />
           </div>
-          <p className="text-white mb-4">{activeRide.origin} -> {activeRide.destination}</p>
+          <p className="text-white mb-4">{activeRide.origin} → {activeRide.destination}</p>
           <div className="space-y-3">
             {activeRide.status === RideStatus.ACCEPTED && <Button className="w-full" onClick={() => updateStatus(RideStatus.DRIVER_ARRIVED)}>Cheguei</Button>}
             {activeRide.status === RideStatus.DRIVER_ARRIVED && <Button className="w-full" onClick={() => updateStatus(RideStatus.RUNNING)}>Iniciar Viagem</Button>}
