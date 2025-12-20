@@ -85,7 +85,6 @@ const request = async <T>(path: string, options: RequestInit = {}): Promise<ApiR
 export const api = {
     async login(email: string, password?: string): Promise<ApiResponse<User>> {
         const res = await request<any>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-        if (!res.success && res.message?.includes('404')) return this.loginLegacy(email, password);
         if (res.success && res.data) {
             const token = res.data.token;
             const userData = fromApiUser(res.data.user);
@@ -106,9 +105,11 @@ export const api = {
         }
         return res;
     },
+    async loginWithGoogle(role: UserRole): Promise<ApiResponse<User>> {
+        return { success: false, message: "Login com Google em desenvolvimento para a porta 3333." };
+    },
     async register(name: string, email: string, role: UserRole, password?: string): Promise<ApiResponse<User>> {
         const res = await request<any>('/auth/register', { method: 'POST', body: JSON.stringify({ name, email, role, password }) });
-        if (!res.success && res.message?.includes('404')) return this.registerLegacy(name, email, role, password);
         if (res.success && res.data) {
             const token = res.data.token;
             const userData = fromApiUser(res.data.user);

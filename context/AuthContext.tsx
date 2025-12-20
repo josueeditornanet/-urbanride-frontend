@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { api } from '../services/api';
 
@@ -22,12 +22,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const sessionUser = await api.getSession();
 
         if (sessionUser) {
-          // Busca dados frescos do servidor
           const dbUser = await api.getDriverData(String(sessionUser.id));
 
           if (!dbUser) {
-              console.warn("Usuário não encontrado ou erro de conexão. Mantendo sessão offline ou limpando.");
-              // Se não encontrar o usuário, remove a sessão local
               api.logout();
               setUser(null);
           } else {
