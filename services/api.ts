@@ -143,6 +143,21 @@ export const api = {
     async calculateRoute(origin: any, destination: any): Promise<ApiResponse<RouteDetails>> {
         return request<RouteDetails>(`/geo/route`, { method: 'POST', body: JSON.stringify({ origin, destination }) });
     },
+    async searchPlaces(q: string): Promise<ApiResponse<any[]>> {
+        return request<any[]>(`/geo/search?q=${encodeURIComponent(q)}`);
+    },
+    async reverseGeocode(lat?: number, lng?: number): Promise<ApiResponse<string>> {
+        return request<string>(`/geo/address?lat=${lat}&lng=${lng}`);
+    },
+    async sendMessage(rideId: number | string, senderId: number | string, content: string): Promise<ApiResponse<any>> {
+        return request<any>(`/rides/${rideId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
+    },
+    async markMessagesAsRead(rideId: number | string, userId?: number | string): Promise<ApiResponse<any>> {
+        return request<any>(`/rides/${rideId}/messages/read`, { method: 'POST' });
+    },
+    async rateRide(rideId: number | string, targetUserId: number | string, rating: number, shouldBlock: boolean, reporterId: number | string): Promise<ApiResponse<any>> {
+        return request<any>(`/rides/${rideId}/rate`, { method: 'POST', body: JSON.stringify({ targetUserId, rating, shouldBlock, reporterId }) });
+    },
     async uploadDriverDocument(userId: number | string, file: File, type: string): Promise<ApiResponse<User>> {
         const formData = new FormData();
         formData.append('file', file);
