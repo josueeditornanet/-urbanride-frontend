@@ -26,22 +26,22 @@ const handleResponse = async (response: Response) => {
 
 export const api = {
   // --- AUTH & MIGRAÇÃO ---
-  async login(email: string): Promise<ApiResponse<User>> {
+  async login(email: string, password: string): Promise<ApiResponse<User>> {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }), // ✅ AGORA COM PASSWORD
       });
 
       const result = await handleResponse(response);
 
       // Ajuste para o formato correto de resposta da API
       if (result.success && (result.user || result.data)) {
-        const userData = result.user || result.data;
-        const token = result.token;
+        const userData = result.user || result.data?.user || result.data;
+        const token = result.token || result.data?.token;
 
         // Armazena token se fornecido pelo backend
         if (token) {
@@ -50,7 +50,7 @@ export const api = {
         // Armazena dados do usuário
         localStorage.setItem('urbanride_session', JSON.stringify(userData));
 
-        return { success: true, data: userData, token, message: result.message };
+        return { success: true, data: userData, token };
       }
 
       return result;
@@ -178,18 +178,20 @@ export const api = {
       const result = await handleResponse(response);
 
       // Ajuste para o formato correto de resposta da API
-      if (result.success && (result.user || result.data)) {
-        const userData = result.user || result.data;
-        const token = result.token;
+      if (result.success && result.data) {
+        const userData = result.data.user;    // ✅ CORRETO
+        const token = result.data.token;      // ✅ CORRETO
 
         // Armazena token se fornecido pelo backend
         if (token) {
           localStorage.setItem('urbanride_token', token);
         }
         // Armazena dados do usuário
-        localStorage.setItem('urbanride_session', JSON.stringify(userData));
+        if (userData) {
+          localStorage.setItem('urbanride_session', JSON.stringify(userData));
+        }
 
-        return { success: true, data: userData, token, message: result.message };
+        return { success: true, data: userData, token };
       }
 
       return result;

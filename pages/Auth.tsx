@@ -24,7 +24,7 @@ export const AuthPage: React.FC = () => {
 
     try {
       if (isLogin) {
-        const res = await api.login(email);
+        const res = await api.login(email, password);
         if (res.success && res.data) {
           setUser(res.data);
         } else {
