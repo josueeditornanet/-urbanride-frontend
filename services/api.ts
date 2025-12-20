@@ -1,577 +1,196 @@
-import { User, UserRole, Ride, RideStatus, Transaction, ApiResponse, VerificationStatus, GeoLocation, RouteDetails, PaymentMethod, ChatMessage, AvailableRidesResponse } from '../types';
+import { User, UserRole, Ride, RideStatus, Transaction, ApiResponse, VerificationStatus, RouteDetails, PaymentMethod, AvailableRidesResponse } from '../types';
 
-// --- CONFIGURAÇÃO DE SEGURANÇA ---
-const ENABLE_FINANCIAL_BLOCK = true;
-const FEE_PERCENTAGE = 0.10; // 10% sobre o valor da corrida
+const API_DOMAIN = 'app.melevabr.com.br:3333';
+const API_URL = `http://${API_DOMAIN}`;
 
-const API_URL = import.meta.env.VITE_API_URL;
-
-// Função auxiliar para obter token de autorização
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('urbanride_token');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': token ? `Bearer ${token}` : '',
-  };
+const STORAGE_KEYS = {
+  TOKEN: 'urbanride_token',
+  USER: 'urbanride_user'
 };
 
-// Função auxiliar para lidar com erros de resposta
-const handleResponse = async (response: Response) => {
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ message: 'Erro de rede' }));
-    throw new Error(errorData.message || `Erro ${response.status}`);
-  }
-  return response.json();
+const fromApiUser = (data: any): User => ({
+    id: Number(data.id),
+    name: data.name,
+    email: data.email,
+    role: data.role as UserRole,
+    prepaidCredits: parseFloat(data.prepaid_credits || 0),
+    payableBalance: parseFloat(data.payable_balance || 0),
+    rating: parseFloat(data.rating || 5),
+    carModel: data.car_model,
+    licensePlate: data.license_plate,
+    verificationStatus: (data.verification_status || 'UNVERIFIED') as VerificationStatus,
+    documents: {
+        profile: data.profile_photo,
+        cnh: data.cnh_document,
+        crlv: data.crlv_document
+    },
+    cpf: data.cpf,
+    phone: data.phone,
+    birthDate: data.birth_date,
+    rejectionReason: data.rejection_reason
+});
+
+const fromApiRide = (data: any): Ride => ({
+    id: Number(data.id),
+    passengerId: Number(data.passenger_id),
+    passengerName: data.passenger_name || 'Passageiro',
+    driverId: data.driver_id ? Number(data.driver_id) : undefined,
+    driverName: data.driver_name,
+    driverCarModel: data.driver_car_model,
+    driverLicensePlate: data.driver_license_plate,
+    origin: data.origin_address,
+    destination: data.destination_address,
+    price: parseFloat(data.price),
+    distanceKm: parseFloat(data.distance_km),
+    status: data.status as RideStatus,
+    paymentMethod: data.payment_method as PaymentMethod,
+    messages: data.messages?.map((m: any) => ({
+        id: Number(m.id),
+        rideId: Number(m.ride_id),
+        senderId: Number(m.sender_id),
+        content: m.content,
+        timestamp: new Date(m.created_at).getTime(),
+        isRead: !!m.is_read
+    })) || [],
+    createdAt: new Date(data.created_at).getTime(),
+    startedAt: data.started_at ? new Date(data.started_at).getTime() : undefined,
+    completedAt: data.completed_at ? new Date(data.completed_at).getTime() : undefined,
+    cancelReason: data.cancel_reason
+});
+
+const request = async <T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> => {
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const url = `${API_URL}${cleanPath}`;
+
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...options.headers,
+    };
+
+    try {
+        const response = await fetch(url, { ...options, headers });
+        if (response.status === 401) {
+            localStorage.clear();
+            return { success: false, message: "Sessão expirada." };
+        }
+        const json = await response.json();
+        return response.ok ? { success: true, data: json } : { success: false, message: json.message || `Erro ${response.status}` };
+    } catch (error) {
+        return { success: false, message: "Erro de conexão com o servidor." };
+    }
 };
 
 export const api = {
-  // --- AUTH & MIGRAÇÃO ---
-  async login(email: string, password: string): Promise<ApiResponse<User>> {
-    try {
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }), // ✅ AGORA COM PASSWORD
-      });
-
-      const result = await handleResponse(response);
-
-      // Ajuste para o formato correto de resposta da API
-      if (result.success && (result.user || result.data)) {
-        const userData = result.user || result.data?.user || result.data;
-        const token = result.token || result.data?.token;
-
-        // Armazena token se fornecido pelo backend
-        if (token) {
-          localStorage.setItem('urbanride_token', token);
+    async login(email: string, password?: string): Promise<ApiResponse<User>> {
+        const res = await request<any>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+        if (!res.success && res.message?.includes('404')) return this.loginLegacy(email, password);
+        if (res.success && res.data) {
+            const token = res.data.token;
+            const userData = fromApiUser(res.data.user);
+            localStorage.setItem(STORAGE_KEYS.TOKEN, token);
+            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+            return { success: true, data: userData, token };
         }
-        // Armazena dados do usuário
-        localStorage.setItem('urbanride_session', JSON.stringify(userData));
-
-        return { success: true, data: userData, token };
-      }
-
-      return result;
-    } catch (error) {
-      console.error('Login error:', error);
-      return { success: false, message: (error as Error).message };
-    }
-  },
-
-  async getSession(): Promise<User | null> {
-      const s = localStorage.getItem('urbanride_session');
-      return s ? JSON.parse(s) : null;
-  },
-
-  async getDriverData(id: string) {
-      try {
-        const response = await fetch(`${API_URL}/auth/me`, {
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        return result.data;
-      } catch (error) {
-        console.error('Get driver data error:', error);
-        return null;
-      }
-  },
-
-  // --- MÉTODOS FINANCEIROS ---
-  async getWalletHistory(userId: string): Promise<Transaction[]> {
-      try {
-        const response = await fetch(`${API_URL}/wallet/history/${userId}`, {
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        return result.data || [];
-      } catch (error) {
-        console.error('Get wallet history error:', error);
-        return [];
-      }
-  },
-
-  async generatePixCharge(amount: number): Promise<ApiResponse<any>> {
-      try {
-        const response = await fetch(`${API_URL}/payment/pix`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ amount }),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Generate PIX charge error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async confirmPixPayment(userId: string, amount: number): Promise<ApiResponse<User>> {
-      try {
-        const response = await fetch(`${API_URL}/payment/pix/confirm`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ userId, amount }),
-        });
-        const result = await handleResponse(response);
-        
-        if (result.success && result.data) {
-          localStorage.setItem('urbanride_session', JSON.stringify(result.data));
+        return res;
+    },
+    async loginLegacy(email: string, password?: string): Promise<ApiResponse<User>> {
+        const res = await request<any>('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+        if (res.success && res.data) {
+            const token = res.data.token;
+            const userData = fromApiUser(res.data.user);
+            localStorage.setItem(STORAGE_KEYS.TOKEN, token);
+            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+            return { success: true, data: userData, token };
         }
-        
-        return result;
-      } catch (error) {
-        console.error('Confirm PIX payment error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  // --- FLUXO DE CORRIDA ---
-  async acceptRide(driverId: string, rideId: string): Promise<ApiResponse<Ride>> {
-      try {
-        const response = await fetch(`${API_URL}/rides/${rideId}/accept`, {
-          method: 'PATCH',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ driverId }),
-        });
-        const result = await handleResponse(response);
-        
-        // Atualiza sessão se o usuário for um motorista com saldo insuficiente
-        if (result.message === "SALDO_INSUFICIENTE") {
-          // O backend deve retornar o status de saldo insuficiente
-          return result;
+        return res;
+    },
+    async register(name: string, email: string, role: UserRole, password?: string): Promise<ApiResponse<User>> {
+        const res = await request<any>('/auth/register', { method: 'POST', body: JSON.stringify({ name, email, role, password }) });
+        if (!res.success && res.message?.includes('404')) return this.registerLegacy(name, email, role, password);
+        if (res.success && res.data) {
+            const token = res.data.token;
+            const userData = fromApiUser(res.data.user);
+            localStorage.setItem(STORAGE_KEYS.TOKEN, token);
+            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+            return { success: true, data: userData, token };
         }
-
-        if (result.success && result.data) {
-          // Atualiza sessão local se necessário
-          const currentSession = localStorage.getItem('urbanride_session');
-          if (currentSession) {
-            const sessionUser = JSON.parse(currentSession);
-            if (sessionUser.id === driverId && result.data.driverId) {
-              // Atualiza o usuário na sessão com informações atualizadas
-              localStorage.setItem('urbanride_session', JSON.stringify({
-                ...sessionUser,
-                prepaidCredits: sessionUser.prepaidCredits // o backend já teria atualizado o valor
-              }));
-            }
-          }
+        return res;
+    },
+    async registerLegacy(name: string, email: string, role: UserRole, password?: string): Promise<ApiResponse<User>> {
+        const res = await request<any>('/register', { method: 'POST', body: JSON.stringify({ name, email, role, password }) });
+        if (res.success && res.data) {
+            const token = res.data.token;
+            const userData = fromApiUser(res.data.user);
+            localStorage.setItem(STORAGE_KEYS.TOKEN, token);
+            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+            return { success: true, data: userData, token };
         }
-        
-        return result;
-      } catch (error) {
-        console.error('Accept ride error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async register(name: string, email: string, password: string, role: UserRole): Promise<ApiResponse<User>> {
-    try {
-      const response = await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, email, password, role: role.toUpperCase() as UserRole }),
-      });
-
-      const result = await handleResponse(response);
-
-      // Ajuste para o formato correto de resposta da API
-      if (result.success && result.data) {
-        const userData = result.data.user;    // ✅ CORRETO
-        const token = result.data.token;      // ✅ CORRETO
-
-        // Armazena token se fornecido pelo backend
-        if (token) {
-          localStorage.setItem('urbanride_token', token);
-        }
-        // Armazena dados do usuário
-        if (userData) {
-          localStorage.setItem('urbanride_session', JSON.stringify(userData));
-        }
-
-        return { success: true, data: userData, token };
-      }
-
-      return result;
-    } catch (error) {
-      console.error('Register error:', error);
-      return { success: false, message: (error as Error).message };
-    }
-  },
-
-  async loginWithGoogle(role: UserRole): Promise<ApiResponse<User>> {
-      try {
-        const response = await fetch(`${API_URL}/auth/google`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ role: role.toUpperCase() as UserRole }),
-        });
-        const result = await handleResponse(response);
-        
-        if (result.success && result.data) {
-          // Armazena token se fornecido pelo backend
-          if (result.token) {
-            localStorage.setItem('urbanride_token', result.token);
-          }
-          // Armazena dados do usuário
-          localStorage.setItem('urbanride_session', JSON.stringify(result.data));
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('Google login error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async logout() {
-    localStorage.removeItem('urbanride_token');
-    localStorage.removeItem('urbanride_session');
-  },
-
-  async updateUserProfile(id: string, data: any) {
-      try {
-        const response = await fetch(`${API_URL}/auth/profile`, {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(data),
-        });
-        const result = await handleResponse(response);
-
-        if (result.success && result.data) {
-          // Atualiza sessão local se for o mesmo usuário
-          const currentSession = localStorage.getItem('urbanride_session');
-          if (currentSession) {
-            const sessionUser = JSON.parse(currentSession);
-            if (sessionUser.id === id) {
-              localStorage.setItem('urbanride_session', JSON.stringify(result.data));
-            }
-          }
-        }
-
-        return result;
-      } catch (error) {
-        console.error('Update user profile error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async requestRide(passengerId: string, origin: string, destination: string, price: number, dist: number, paymentMethod: PaymentMethod): Promise<ApiResponse<Ride>> {
-      try {
-        const response = await fetch(`${API_URL}/rides`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            passengerId,
-            origin,
-            destination,
-            price,
-            distanceKm: dist,
-            paymentMethod: paymentMethod || PaymentMethod.CASH,
-          }),
-        });
-        const result = await handleResponse(response);
-        
-        return result;
-      } catch (error) {
-        console.error('Request ride error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async getAvailableRides(driverId: string): Promise<AvailableRidesResponse> {
-      try {
-        const response = await fetch(`${API_URL}/rides/available?driverId=${driverId}`, {
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Get available rides error:', error);
-        return { success: false, rides: [] };
-      }
-  },
-
-  async getDriverActiveRide(driverId: string): Promise<ApiResponse<Ride | null>> {
-      try {
-        const response = await fetch(`${API_URL}/rides/active?driverId=${driverId}`, {
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Get driver active ride error:', error);
-        return { success: false, data: null };
-      }
-  },
-
-  async getRideStatus(rideId: string): Promise<ApiResponse<Ride>> {
-      try {
-        const response = await fetch(`${API_URL}/rides/${rideId}`, {
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Get ride status error:', error);
-        return { success: false, data: null };
-      }
-  },
-
-  async updateRideStatus(rideId: string, status: RideStatus, cancelReason?: string): Promise<ApiResponse<Ride>> {
-      try {
-        const response = await fetch(`${API_URL}/rides/${rideId}/status`, {
-          method: 'PATCH',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ status, cancelReason }),
-        });
-        const result = await handleResponse(response);
-        
-        // Atualiza sessão local se a corrida for finalizada e afetar o saldo do motorista
-        if (result.success && result.data && status === RideStatus.COMPLETED) {
-          const currentSession = localStorage.getItem('urbanride_session');
-          if (currentSession) {
-            const sessionUser = JSON.parse(currentSession);
-            if (sessionUser.id === result.data.driverId) {
-              // O backend deve retornar o usuário atualizado com os saldos corretos
-              // Atualiza a sessão local com os dados mais recentes
-              const updatedUser = await this.getDriverData(sessionUser.id);
-              if (updatedUser) {
-                localStorage.setItem('urbanride_session', JSON.stringify(updatedUser));
-              }
-            }
-          }
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('Update ride status error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async rateRide(rideId: string, targetId: string, rating: number, shouldBlock?: boolean, reporterId?: string): Promise<ApiResponse<any>> {
-      try {
-        const response = await fetch(`${API_URL}/rides/${rideId}/rating`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ targetId, rating, shouldBlock, reporterId }),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Rate ride error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  // --- CHAT SYSTEM ---
-  async sendMessage(rideId: string, senderId: string, content: string): Promise<ApiResponse<Ride>> {
-      try {
-        const response = await fetch(`${API_URL}/chat/send`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ rideId, senderId, content }),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Send message error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async markMessagesAsRead(rideId: string, readerId: string): Promise<void> {
-      try {
-        const response = await fetch(`${API_URL}/chat/${rideId}/read`, {
-          method: 'PATCH',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ readerId }),
-        });
-        await handleResponse(response);
-      } catch (error) {
-        console.error('Mark messages as read error:', error);
-      }
-  },
-
-  async searchPlaces(q: string) {
-      try {
-        if(!q) return { success: true, data: [] };
-        
-        // Este endpoint pode ser implementado no backend para lidar com geocodificação
-        const response = await fetch(`${API_URL}/maps/search?q=${encodeURIComponent(q)}`, {
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Search places error:', error);
-        return { success: false, data: [] };
-      }
-  },
-
-  async calculateRoute(a: any, b: any) {
-      try {
-        const response = await fetch(`${API_URL}/maps/route`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ origin: a, destination: b }),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Calculate route error:', error);
-        return { success: false, data: null };
-      }
-  },
-
-  async reverseGeocode(lat?: number, lng?: number) {
-      try {
-        if(lat === undefined || lng === undefined) {
-          return { success: true, data: "Coordenadas não fornecidas" };
-        }
-        
-        const response = await fetch(`${API_URL}/maps/reverse?lat=${lat}&lng=${lng}`, {
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        return result;
-      } catch (error) {
-        console.error('Reverse geocode error:', error);
-        return { success: false, data: null };
-      }
-  },
-
-  // Funções auxiliares que não precisam de backend real (ainda)
-  async forceResetDatabase() {
-    localStorage.clear();
-    window.location.reload();
-  },
-
-  async generateQrCode() { return { success: true }; },
-  async checkPaymentStatus() { return { success: true }; },
-
-  async uploadDriverDocument(userId: string, file: File, type: 'cnh' | 'crlv' | 'profile'): Promise<ApiResponse<User>> {
-      try {
-        // Para upload de arquivos, precisamos usar FormData
+        return res;
+    },
+    async getSession(): Promise<User | null> {
+        const userStr = localStorage.getItem(STORAGE_KEYS.USER);
+        return userStr ? JSON.parse(userStr) : null;
+    },
+    async logout() { localStorage.clear(); },
+    async getDriverData(id: number | string): Promise<User | null> {
+        const res = await request<any>(`/users/${id}`);
+        return res.success ? fromApiUser(res.data) : null;
+    },
+    async updateUserProfile(userId: number | string, data: any): Promise<ApiResponse<User>> {
+        return request<any>(`/users/${userId}`, { method: 'PATCH', body: JSON.stringify(data) }).then(res => res.success ? { success: true, data: fromApiUser(res.data) } : res);
+    },
+    async requestRide(passengerId: number | string, origin: string, destination: string, price: number, dist: number, paymentMethod: PaymentMethod): Promise<ApiResponse<Ride>> {
+        return request<any>('/rides', { method: 'POST', body: JSON.stringify({ originAddress: origin, destinationAddress: destination, price, distanceKm: dist, paymentMethod }) }).then(res => res.success ? { success: true, data: fromApiRide(res.data) } : res);
+    },
+    async getAvailableRides(driverId: number | string): Promise<ApiResponse<AvailableRidesResponse>> {
+        const res = await request<any[]>(`/rides/available?driverId=${driverId}`);
+        return res.success ? { success: true, data: { rides: res.data!.map(fromApiRide) } } : { success: false, data: { rides: [] } };
+    },
+    async getDriverActiveRide(driverId: number | string): Promise<ApiResponse<Ride | null>> {
+        const res = await request<any>(`/rides/active`);
+        return res.success ? { success: true, data: res.data ? fromApiRide(res.data) : null } : res;
+    },
+    async acceptRide(driverId: number | string, rideId: number | string): Promise<ApiResponse<Ride>> {
+        return request<any>(`/rides/${rideId}/accept`, { method: 'POST' }).then(res => res.success ? { success: true, data: fromApiRide(res.data) } : res);
+    },
+    async updateRideStatus(rideId: number | string, status: RideStatus, cancelReason?: string): Promise<ApiResponse<Ride>> {
+        return request<any>(`/rides/${rideId}/status`, { method: 'PATCH', body: JSON.stringify({ status, cancelReason }) }).then(res => res.success ? { success: true, data: fromApiRide(res.data) } : res);
+    },
+    async getRideStatus(rideId: number | string): Promise<ApiResponse<Ride>> {
+        const res = await request<any>(`/rides/${rideId}`);
+        return res.success ? { success: true, data: fromApiRide(res.data) } : res;
+    },
+    async calculateRoute(origin: any, destination: any): Promise<ApiResponse<RouteDetails>> {
+        return request<RouteDetails>(`/geo/route`, { method: 'POST', body: JSON.stringify({ origin, destination }) });
+    },
+    async searchPlaces(q: string) { return request<any[]>(`/geo/search?q=${encodeURIComponent(q)}`); },
+    async reverseGeocode(lat?: number, lng?: number) { return request<string>(`/geo/address?lat=${lat}&lng=${lng}`); },
+    async getWalletHistory(userId: number | string) {
+        const res = await request<any[]>(`/users/${userId}/transactions`);
+        return res.success ? res.data!.map((t: any) => ({ ...t, amount: parseFloat(t.amount), date: new Date(t.created_at).getTime() })) : [];
+    },
+    async sendMessage(rideId: number | string, senderId: number | string, content: string) {
+        return request<any>(`/rides/${rideId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
+    },
+    async markMessagesAsRead(rideId: number | string, userId?: number | string) { await request(`/rides/${rideId}/messages/read`, { method: 'POST' }); },
+    async rateRide(rideId: number | string, targetUserId: number | string, rating: number, shouldBlock: boolean, reporterId: number | string) {
+        return request(`/rides/${rideId}/rate`, { method: 'POST', body: JSON.stringify({ targetUserId, rating, shouldBlock, reporterId }) });
+    },
+    async uploadDriverDocument(userId: number | string, file: File, type: string): Promise<ApiResponse<User>> {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('type', type);
-        
-        const response = await fetch(`${API_URL}/documents/upload`, {
-          method: 'POST',
-          headers: {
-            // Não incluir Content-Type para que o navegador defina automaticamente com boundary
-            'Authorization': `Bearer ${localStorage.getItem('urbanride_token')}`,
-          },
-          body: formData,
-        });
-        
-        const result = await handleResponse(response);
-        
-        if (result.success && result.data) {
-          // Atualiza sessão local se for o mesmo usuário
-          const currentSession = localStorage.getItem('urbanride_session');
-          if (currentSession) {
-            const sessionUser = JSON.parse(currentSession);
-            if (sessionUser.id === userId) {
-              localStorage.setItem('urbanride_session', JSON.stringify(result.data));
-            }
-          }
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('Upload document error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async submitForReview(userId: string): Promise<ApiResponse<User>> {
-      try {
-        const response = await fetch(`${API_URL}/users/${userId}/verify`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        
-        if (result.success && result.data) {
-          // Atualiza sessão local
-          localStorage.setItem('urbanride_session', JSON.stringify(result.data));
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('Submit for review error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async adminForceApprove(userId: string): Promise<ApiResponse<User>> {
-      try {
-        const response = await fetch(`${API_URL}/admin/users/${userId}/approve`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        
-        if (result.success && result.data) {
-          // Atualiza sessão local
-          localStorage.setItem('urbanride_session', JSON.stringify(result.data));
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('Admin force approve error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async adminForceReject(userId: string, reason: string): Promise<ApiResponse<User>> {
-      try {
-        const response = await fetch(`${API_URL}/admin/users/${userId}/reject`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ reason }),
-        });
-        const result = await handleResponse(response);
-        
-        if (result.success && result.data) {
-          // Atualiza sessão local
-          localStorage.setItem('urbanride_session', JSON.stringify(result.data));
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('Admin force reject error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  },
-
-  async getDocumentUrl(fileId: string) {
-    // O backend deve retornar a URL do documento
-    return `${API_URL}/documents/${fileId}`;
-  },
-
-  async resetDriverVerification(userId: string): Promise<ApiResponse<User>> {
-      try {
-        const response = await fetch(`${API_URL}/users/${userId}/reset-verification`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        });
-        const result = await handleResponse(response);
-        
-        if (result.success && result.data) {
-          // Atualiza sessão local
-          localStorage.setItem('urbanride_session', JSON.stringify(result.data));
-        }
-        
-        return result;
-      } catch (error) {
-        console.error('Reset driver verification error:', error);
-        return { success: false, message: (error as Error).message };
-      }
-  }
+        const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+        const response = await fetch(`${API_URL}/users/${userId}/documents`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
+        const json = await response.json();
+        return response.ok ? { success: true, data: fromApiUser(json) } : { success: false, message: json.message };
+    },
+    async getDocumentUrl(fileId: string): Promise<string> { return `${API_URL}/documents/${fileId}`; },
+    async submitForReview(userId: number | string): Promise<ApiResponse<User>> { return request<any>(`/users/${userId}/submit-review`, { method: 'POST' }).then(res => res.success ? { success: true, data: fromApiUser(res.data) } : res); },
+    async adminForceApprove(userId: number | string): Promise<ApiResponse<User>> { return request<any>(`/users/${userId}/approve`, { method: 'POST' }).then(res => res.success ? { success: true, data: fromApiUser(res.data) } : res); },
+    async resetDriverVerification(userId: number | string): Promise<ApiResponse<User>> { return request<any>(`/users/${userId}/reset-verification`, { method: 'POST' }).then(res => res.success ? { success: true, data: fromApiUser(res.data) } : res); },
+    async generatePixCharge(amount: number): Promise<ApiResponse<any>> { return request<any>('/payments/pix/charge', { method: 'POST', body: JSON.stringify({ amount }) }); },
+    async confirmPixPayment(userId: number | string, amount: number): Promise<ApiResponse<any>> { return request<any>('/payments/pix/confirm', { method: 'POST', body: JSON.stringify({ userId, amount }) }); }
 };

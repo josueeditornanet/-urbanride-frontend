@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { api } from '../services/api';
 
@@ -17,28 +17,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   const checkSession = async () => {
+    setIsLoading(true);
     try {
-        // 1. Tenta recuperar a sessão local
         const sessionUser = await api.getSession();
-        
+
         if (sessionUser) {
-          // 2. VERIFICAÇÃO DE INTEGRIDADE (CRÍTICO)
-          // Verifica se esse usuário da sessão realmente existe no "Banco de Dados" atual.
-          // Isso previne o problema da "Sessão Zumbi" onde o navegador tem um user ID
-          // que não existe mais no array de users do localStorage/API.
-          const dbUser = await api.getDriverData(sessionUser.id);
-          
+          // Busca dados frescos do servidor
+          const dbUser = await api.getDriverData(String(sessionUser.id));
+
           if (!dbUser) {
-              console.warn("Sessão inválida detectada (Usuário não encontrado no DB). Realizando logout forçado.");
+              console.warn("Usuário não encontrado ou erro de conexão. Mantendo sessão offline ou limpando.");
+              // Se não encontrar o usuário, remove a sessão local
               api.logout();
               setUser(null);
           } else {
-              // Se existe, atualiza com os dados frescos do DB
               setUser(dbUser);
           }
         }
     } catch (error) {
-        console.error("Erro ao verificar sessão:", error);
+        console.error("Erro fatal ao verificar sessão:", error);
         setUser(null);
     } finally {
         setIsLoading(false);
@@ -47,12 +44,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshUser = async () => {
     if (user) {
-        // Busca sempre a versão mais atual do banco de dados
-        const freshData = await api.getDriverData(user.id);
+        const freshData = await api.getDriverData(String(user.id));
         if (freshData) {
             setUser(freshData);
         } else {
-            // Se tentar atualizar e o usuário sumiu do banco, desloga
             logout();
         }
     }
@@ -65,7 +60,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     api.logout();
     setUser(null);
-    // Opcional: Redirecionar ou limpar estados globais se necessário
   };
 
   return (
